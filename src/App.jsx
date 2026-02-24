@@ -272,9 +272,21 @@ const BatchingCalculator = () => {
                 <label>{mode === 'services' ? 'Nº Servicios' : 'Capacidad Botella (ml)'}</label>
                 <input
                     type="number"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
                     className="text-center font-black"
                     value={mode === 'services' ? servicesCount : targetCapacity}
-                    onChange={e => mode === 'services' ? setServicesCount(e.target.value) : setTargetCapacity(e.target.value)}
+                    onChange={e => {
+                        const val = e.target.value;
+                        if (val === '') {
+                            mode === 'services' ? setServicesCount('') : setTargetCapacity('');
+                            return;
+                        }
+                        const parsed = parseInt(val, 10);
+                        if (!isNaN(parsed)) {
+                            mode === 'services' ? setServicesCount(parsed) : setTargetCapacity(parsed);
+                        }
+                    }}
                 />
             </div>
 
@@ -763,7 +775,18 @@ export default function App() {
                         </div>
 
                         <div className="card text-center p-8">
-                            <p className="text-muted text-[10px] italic">Made with Precision for High-Volume Bars</p>
+                            <p className="text-muted text-[10px] italic mb-8">Made with Precision for High-Volume Bars</p>
+
+                            <h3 className="font-black uppercase text-white mb-4 tracking-widest text-sm text-center">Compromiso de Accesibilidad</h3>
+                            <p className="text-gray-400 text-xs leading-relaxed mb-8 text-center">
+                                En SIRIUS, creemos en potenciar el oficio del bartender sin barreras. Todos nuestros servicios actuales son de acceso gratuito y nuestro firme compromiso es mantenerlos así de forma indefinida. La continuidad de esta plataforma es posible gracias a la comunidad y se sustenta puramente mediante donaciones voluntarias. Si nuestra herramienta aporta valor a tu operativa diaria, considera apoyarnos para que SIRIUS siga evolucionando.
+                            </p>
+                            <button
+                                onClick={handleCoffee}
+                                className="w-full bg-[#FFDD00] text-black font-black shadow-lg hover:scale-[1.02] active:scale-95 transition-all text-xs h-16 rounded-2xl flex items-center justify-center gap-3 border-none uppercase"
+                            >
+                                INVITAME A UN CAFÉ
+                            </button>
                         </div>
                     </div>
                 )}
