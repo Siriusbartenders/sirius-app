@@ -296,7 +296,9 @@ const BatchingCalculator = () => {
                         )}
                         <div className="mt-8 pt-6 border-t border-dashed border-gray-800 flex justify-between items-end">
                             <div className="flex flex-col">
-                                <span className="font-black text-[9px] uppercase text-orange-500 tracking-widest-lg mb-1">Total Final</span>
+                                <span className="font-black text-[9px] uppercase text-gray-500 tracking-widest-lg mb-1">Total Mezcla</span>
+                                <span className="text-2xl font-black text-gray-400 tracking-tighter mb-2">{batchTotal.toFixed(0)} <small className="text-xs">ml</small></span>
+                                <span className="font-black text-[9px] uppercase text-orange-500 tracking-widest-lg mb-1">Total con Dilución (+15%)</span>
                                 <span className="text-4xl font-black text-white tracking-tighter">{results.total.toFixed(0)} <small className="text-sm">ml</small></span>
                             </div>
                             <div className="w-12 h-12 bg-white text-black rounded-full flex items-center justify-center font-black">
@@ -311,29 +313,134 @@ const BatchingCalculator = () => {
 };
 
 const CostCalculator = () => {
-    const [data, setData] = useState({ price: '', vol: '', use: '' });
-    const cost = (parseFloat(data.price) / (parseFloat(data.vol) || 1)) * (parseFloat(data.use) || 0);
+    const [cocktailName, setCocktailName] = useState('');
+    const [scandallIngredients, setScandallIngredients] = useState([{ name: '', price: '', vol: '', use: '' }]);
+    const [scandalls, setScandalls] = useState(() => {
+        const saved = localStorage.getItem('sirius_scandalls');
+        return saved ? JSON.parse(saved) : [];
+    });
+
+    useEffect(() => {
+        localStorage.setItem('sirius_scandalls', JSON.stringify(scandalls));
+    }, [scandalls]);
+
+    const addIngredient = () => setScandallIngredients([...scandallIngredients, { name: '', price: '', vol: '', use: '' }]);
+    const updateIngredient = (index, field, value) => {
+        const next = [...scandallIngredients];
+        next[index][field] = value;
+        setScandallIngredients(next);
+    };
+    const removeIngredient = (index) => setScandallIngredients(scandallIngredients.filter((_, i) => i !== index));
+
+    const totalCost = scandallIngredients.reduce((acc, curr) => {
+        const cost = (parseFloat(curr.price) / (parseFloat(curr.vol) || 1)) * (parseFloat(curr.use) || 0);
+        return acc + (!isNaN(cost) ? cost : 0);
+    }, 0);
+
+    const suggestedPrice = totalCost * 4;
+
+    const saveScandall = () => {
+        if (!cocktailName) {
+            alert('Por favor, ponle un nombre al cóctel antes de guardarlo.');
+            return;
+        }
+        const newScandall = {
+            id: Date.now(),
+            name: cocktailName,
+            ingredients: scandallIngredients,
+            totalCost
+        };
+        setScandalls([...scandalls, newScandall]);
+        setCocktailName('');
+        setScandallIngredients([{ name: '', price: '', vol: '', use: '' }]);
+    };
+
+    const deleteScandall = (id) => {
+        if (window.confirm('¿Eliminar escandallo?')) {
+            setScandalls(scandalls.filter(s => s.id !== id));
+        }
+    }
 
     return (
-        <div className="fade-in space-y-4">
-            <div className="card">
-                <div className="input-group">
-                    <label>Precio Botella (€)</label>
-                    <input type="number" value={data.price} onChange={e => setData({ ...data, price: e.target.value })} placeholder="0.00" />
+        <div className="fade-in space-y-6 pb-32">
+            <div className="card border-orange-500/30">
+                <div className="input-group mb-6">
+                    <label className="text-[10px] uppercase font-black tracking-widest text-orange-500">Nombre del Cóctel</label>
+                    <input type="text" value={cocktailName} onChange={e => setCocktailName(e.target.value)} placeholder="Ej: Negroni Clásico" className="h-14 font-bold text-white bg-black/40 border-gray-800" />
                 </div>
-                <div className="input-group">
-                    <label>Capacidad Botella (ml)</label>
-                    <input type="number" value={data.vol} onChange={e => setData({ ...data, vol: e.target.value })} placeholder="700" />
+
+                <div className="space-y-4">
+                    <label className="text-[10px] uppercase font-black tracking-widest text-gray-500">Ingredientes y Costes</label>
+                    {scandallIngredients.map((ing, idx) => {
+                        const ingCost = (parseFloat(ing.price) / (parseFloat(ing.vol) || 1)) * (parseFloat(ing.use) || 0);
+                        return (
+                            <div key={idx} className="bg-black/40 p-4 rounded-3xl border border-gray-800 space-y-3 relative animate-in">
+                                <button type="button" onClick={() => removeIngredient(idx)} className="absolute top-4 right-4 text-gray-600 hover:text-red-500 transition-colors">
+                                    <Trash2 size={16} />
+                                </button>
+
+                                <div className="input-group">
+                                    <label className="text-[9px]">Ingrediente</label>
+                                    <input type="text" value={ing.name} onChange={e => updateIngredient(idx, 'name', e.target.value)} placeholder="Campari..." className="h-10 text-xs" />
+                                </div>
+                                <div className="grid grid-cols-3 gap-2">
+                                    <div className="input-group">
+                                        <label className="text-[9px]">Precio(€)</label>
+                                        <input type="number" step="0.01" value={ing.price} onChange={e => updateIngredient(idx, 'price', e.target.value)} placeholder="0.00" className="h-10 text-xs" />
+                                    </div>
+                                    <div className="input-group">
+                                        <label className="text-[9px]">Cap.(ml)</label>
+                                        <input type="number" value={ing.vol} onChange={e => updateIngredient(idx, 'vol', e.target.value)} placeholder="700" className="h-10 text-xs" />
+                                    </div>
+                                    <div className="input-group">
+                                        <label className="text-[9px]">Uso(ml)</label>
+                                        <input type="number" value={ing.use} onChange={e => updateIngredient(idx, 'use', e.target.value)} placeholder="30" className="h-10 text-xs text-orange-500 font-bold border-orange-500/30" />
+                                    </div>
+                                </div>
+                                {ingCost > 0 && <div className="text-right text-[10px] font-black text-gray-400">COSTE: <span className="text-white">{ingCost.toFixed(2)}€</span></div>}
+                            </div>
+                        )
+                    })}
                 </div>
-                <div className="input-group">
-                    <label>ML en Cóctel</label>
-                    <input type="number" value={data.use} onChange={e => setData({ ...data, use: e.target.value })} placeholder="50" />
-                </div>
+
+                <button type="button" onClick={addIngredient} className="w-full h-14 bg-orange-500/10 border border-orange-500/20 text-orange-500 rounded-2xl font-black uppercase tracking-widest text-[10px] mt-4 hover:bg-orange-500 hover:text-black transition-all flex justify-center items-center gap-2">
+                    <Plus size={16} /> Añadir Ingrediente
+                </button>
             </div>
-            {cost > 0 && (
-                <div className="card bg-orange-500 border-none text-black text-center py-12 scale-105 shadow-2xl overflow-hidden">
-                    <label className="text-black font-black text-[10px] tracking-widest-lg opacity-60">COSTE RECETA</label>
-                    <div className="text-7xl font-black tracking-tighter mt-1">{cost.toFixed(2)}€</div>
+
+            {totalCost > 0 && (
+                <div className="card shadow-orange border-orange-500/50 bg-[#121212]">
+                    <div className="grid grid-cols-2 gap-4">
+                        <div className="bg-white/5 p-4 rounded-2xl flex flex-col justify-center items-center">
+                            <span className="text-[9px] font-black uppercase text-gray-500 tracking-widest-lg mb-1 text-center">Coste Total<br />Cóctel</span>
+                            <span className="text-3xl font-black text-white">{totalCost.toFixed(2)}€</span>
+                        </div>
+                        <div className="bg-orange-500/10 p-4 border border-orange-500/20 rounded-2xl flex flex-col justify-center items-center">
+                            <span className="text-[9px] font-black uppercase text-orange-500/60 tracking-widest-lg mb-1 text-center">PVP Sugerido<br />(Aprox x4)</span>
+                            <span className="text-2xl font-black text-orange-500">{suggestedPrice.toFixed(2)}€</span>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            <button type="button" onClick={saveScandall} className="w-full h-14 bg-orange-500 text-black rounded-2xl font-black uppercase text-[11px] shadow-lg shadow-orange-500/20 active:scale-95 transition-all flex items-center justify-center gap-2">
+                <Save size={18} /> Guardar Escandallo
+            </button>
+
+            {scandalls.length > 0 && (
+                <div className="space-y-4 pt-8 border-t border-dashed border-gray-800">
+                    <h3 className="font-black tracking-widest text-[10px] text-gray-500 uppercase">Escandallos Guardados</h3>
+                    {scandalls.map(s => (
+                        <div key={s.id} className="card border-l-4 border-l-orange-500 p-6 flex justify-between items-center">
+                            <div>
+                                <h4 className="text-lg font-black text-white">{s.name}</h4>
+                                <p className="text-[10px] text-gray-500 uppercase font-bold mt-1">Coste: {s.totalCost.toFixed(2)}€ / Sugerido: {(s.totalCost * 4).toFixed(2)}€</p>
+                            </div>
+                            <button onClick={() => deleteScandall(s.id)} className="w-10 h-10 bg-red-500/5 text-red-500 rounded-xl flex items-center justify-center hover:bg-red-500/10 transition-colors">
+                                <Trash2 size={16} />
+                            </button>
+                        </div>
+                    ))}
                 </div>
             )}
         </div>
@@ -406,8 +513,9 @@ const InventoryView = () => {
 
     const editTragosDirectly = (item) => {
         const newValue = prompt(`Editar tragos para ${item.name}:`, item.currentServings);
-        if (newValue !== null && !isNaN(newValue)) {
-            setItems(items.map(i => i.id === item.id ? { ...i, currentServings: parseInt(newValue) } : i));
+        const parsedValue = parseInt(newValue);
+        if (newValue !== null && !isNaN(parsedValue) && newValue.trim() !== '') {
+            setItems(items.map(i => i.id === item.id ? { ...i, currentServings: parsedValue } : i));
         }
     };
 
@@ -523,13 +631,13 @@ const InventoryView = () => {
                                     <input name="servingsPerBottle" type="number" defaultValue={editingItem?.servingsPerBottle || 14} required className="h-12 text-sm bg-black/40 border-gray-800 focus:border-orange-500" />
                                 </div>
                                 <div className="input-group">
-                                    <label className="text-[10px] uppercase font-black tracking-widest text-gray-400">Tragos Iniciales</label>
-                                    <input name="currentServings" type="number" defaultValue={editingItem?.currentServings} className="h-12 text-sm bg-black/40 border-gray-800 focus:border-orange-500" placeholder="Opcional" />
+                                    <label className="text-[10px] uppercase font-black tracking-widest text-gray-400">Capacidad Botella (ml)</label>
+                                    <input name="currentServings" type="number" defaultValue={editingItem?.currentServings || 700} required className="h-12 text-sm bg-black/40 border-gray-800 focus:border-orange-500" placeholder="Ej: 700, 1000" />
                                 </div>
                             </div>
 
                             <button type="submit" className="w-full h-12 bg-orange-500 text-black rounded-xl uppercase font-black text-[11px] shadow-lg shadow-orange-500/20 active:scale-95 transition-all flex items-center justify-center gap-2">
-                                <Save size={16} /> {editingItem ? 'Guardar Cambios' : 'Registrar Mermas / Producto'}
+                                <Save size={16} /> Guardar Producto
                             </button>
                         </form>
                     </div>
@@ -572,7 +680,7 @@ const InventoryView = () => {
                                 onClick={() => setShowInfoId(showInfoId === item.id ? null : item.id)}
                                 className="btn-action bg-white/5 text-gray-500 hover:text-white rounded-xl"
                             >
-                                {showInfoId === item.id ? 'Cerrar' : 'Ver Detalles'}
+                                {showInfoId === item.id ? 'Cerrar' : 'Opciones'}
                             </button>
                             {item.currentServings < 5 && (
                                 <span className="flex items-center gap-1.5 text-[8px] font-black text-red-500 uppercase tracking-widest bg-red-500/10 px-3 py-1.5 rounded-full animate-pulse">
@@ -591,6 +699,9 @@ const InventoryView = () => {
                                     <p className="text-[8px] text-muted font-black uppercase tracking-widest mb-1">Costo Botella</p>
                                     <p className="text-xs font-black flex items-center gap-2 text-white"><Euro size={12} className="text-orange-500" /> {item.price.toFixed(2)}€</p>
                                 </div>
+                                <button className="col-span-2 mt-2 h-10 flex items-center justify-center gap-2 text-[10px] uppercase font-black text-orange-500 bg-orange-500/10 rounded-xl" onClick={() => openEditModal(item)}>
+                                    <Edit3 size={14} /> Editar Información Global
+                                </button>
                             </div>
                         )}
                     </div>
@@ -644,17 +755,11 @@ export default function App() {
                             <p className="text-orange-500 font-black tracking-widest-xl uppercase text-[12px] mt-2">Intelligence at the Bar</p>
                         </div>
                         <div className="card bg-orange-500/5 backdrop-blur-sm p-10 rounded-3xl border border-orange-500/10 flex flex-col items-center text-center">
-                            <Coffee size={40} className="text-orange-500 mb-6" />
-                            <h3 className="font-black uppercase text-white mb-4 tracking-widest text-sm">Transparencia</h3>
-                            <p className="text-gray-400 text-xs leading-relaxed mb-8">
-                                Sirius es una herramienta creada para la comunidad. El proyecto se sustenta puramente a través de donaciones. A futuro, dependiendo del apoyo, garantizaremos la evolución de la app y un posible ecosistema en la nube.
+                            <Info size={40} className="text-orange-500 mb-6" />
+                            <h3 className="font-black uppercase text-white mb-4 tracking-widest text-sm text-center">Dilución del 15%</h3>
+                            <p className="text-gray-400 text-xs leading-relaxed mb-4 text-center">
+                                Al batchear, el hielo no aporta agua de forma natural. Añadimos un 15% de agua extra al total de la mezcla para simular la dilución que ocurriría al agitar o refrescar el cóctel individualmente.
                             </p>
-                            <button
-                                onClick={handleCoffee}
-                                className="w-full bg-[#FFDD00] text-black font-black shadow-lg hover:scale-[1.02] active:scale-95 transition-all text-xs h-16 rounded-2xl flex items-center justify-center gap-3 border-none uppercase"
-                            >
-                                INVITAME A UN CAFÉ
-                            </button>
                         </div>
 
                         <div className="card text-center p-8">
