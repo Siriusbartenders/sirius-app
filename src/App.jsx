@@ -153,22 +153,19 @@ const BatchingCalculator = () => {
 
     const totalRecipeMl = ingredients.reduce((acc, curr) => acc + (parseFloat(curr.amount) || 0), 0);
 
-    let results = null;
-    const batchTotal = mode === 'services' ? totalRecipeMl * servicesCount : targetCapacity;
+    const batchTotal = mode === 'services' ? totalRecipeMl * (servicesCount || 0) : (targetCapacity || 0);
+    const dilution = batchTotal * 0.15;
+
+    let results = {
+        dilution,
+        total: batchTotal + dilution
+    };
 
     if (mode === 'services') {
-        const dilution = batchTotal * 0.15;
-        results = {
-            items: ingredients.map(ing => ({ ...ing, total: (parseFloat(ing.amount) || 0) * servicesCount })),
-            dilution,
-            total: batchTotal + dilution
-        };
+        results.items = ingredients.map(ing => ({ ...ing, total: (parseFloat(ing.amount) || 0) * (servicesCount || 0) }));
     } else {
-        const multiplier = totalRecipeMl > 0 ? targetCapacity / totalRecipeMl : 0;
-        results = {
-            items: ingredients.map(ing => ({ ...ing, total: (parseFloat(ing.amount) || 0) * multiplier })),
-            total: targetCapacity
-        };
+        const multiplier = totalRecipeMl > 0 ? (targetCapacity || 0) / totalRecipeMl : 0;
+        results.items = ingredients.map(ing => ({ ...ing, total: (parseFloat(ing.amount) || 0) * multiplier }));
     }
 
     return (
@@ -300,12 +297,10 @@ const BatchingCalculator = () => {
                                 <span className="font-black text-lg text-white">{ing.total.toFixed(0)} <small className="text-[10px] text-orange-500">ml</small></span>
                             </div>
                         ))}
-                        {mode === 'services' && (
-                            <div className="flex justify-between items-center bg-blue-500/5 border border-blue-500/20 p-4 rounded-2xl text-blue-400 mt-2">
-                                <span className="text-[10px] font-black uppercase flex items-center gap-2"><Droplet size={14} /> Dilución (+15%)</span>
-                                <span className="font-black text-lg text-blue-300">{results.dilution.toFixed(0)} ml</span>
-                            </div>
-                        )}
+                        <div className="flex justify-between items-center bg-blue-500/5 border border-blue-500/20 p-4 rounded-2xl text-blue-400 mt-2">
+                            <span className="text-[10px] font-black uppercase flex items-center gap-2"><Droplet size={14} /> Dilución (+15%)</span>
+                            <span className="font-black text-lg text-blue-300">{results.dilution.toFixed(0)} ml</span>
+                        </div>
                         <div className="mt-8 pt-6 border-t border-dashed border-gray-800 flex justify-between items-end">
                             <div className="flex flex-col">
                                 <span className="font-black text-[9px] uppercase text-gray-500 tracking-widest-lg mb-1">Total Mezcla</span>
