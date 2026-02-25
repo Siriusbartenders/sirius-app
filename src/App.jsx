@@ -21,7 +21,13 @@ import {
     ArrowUpDown,
     Save,
     Settings,
-    UserPlus
+    UserPlus,
+    Wine,
+    ShoppingCart,
+    ArrowRight,
+    AlertTriangle,
+    Mail,
+    History
 } from 'lucide-react';
 
 // --- Sub-components ---
@@ -457,10 +463,21 @@ const CostCalculator = () => {
 const InventoryView = () => {
     const [items, setItems] = useState(() => {
         const saved = localStorage.getItem('sirius_stock');
-        return saved ? JSON.parse(saved) : [
-            { id: 1, name: 'Tanqueray Gin', category: 'Alcohol', servingsPerBottle: 14, currentServings: 14, openedAt: new Date().toISOString(), price: 18.50 },
-            { id: 2, name: 'Campari', category: 'Alcohol', servingsPerBottle: 23, currentServings: 15, openedAt: new Date().toISOString(), price: 14.20 },
-            { id: 3, name: 'Sirope de Azúcar', category: 'No Alcohol', servingsPerBottle: 35, currentServings: 35, openedAt: new Date().toISOString(), price: 6.00 }
+        return saved ? JSON.parse(saved).map(i => ({
+            ...i,
+            stock_barra: i.stock_barra ?? i.currentServings ?? 14,
+            stock_almacen: i.stock_almacen ?? 0,
+            umbral_alerta_barra: i.umbral_alerta_barra ?? 2,
+            umbral_alerta_almacen: i.umbral_alerta_almacen ?? 5,
+            email_alerta_interno: i.email_alerta_interno || '',
+            email_proveedor: i.email_proveedor || '',
+            fecha_ultima_alerta_barra: i.fecha_ultima_alerta_barra || null,
+            fecha_ultima_alerta_almacen: i.fecha_ultima_alerta_almacen || null,
+            historial_compras: i.historial_compras || []
+        })) : [
+            { id: 1, name: 'Gin Mare', category: 'Alcohol', servingsPerBottle: 14, currentServings: 700, stock_barra: 10, stock_almacen: 40, umbral_alerta_barra: 2, umbral_alerta_almacen: 5, email_alerta_interno: 'bar@sirius.com', email_proveedor: 'pedidos@proveedor.com', openedAt: new Date().toISOString(), price: 34.50 },
+            { id: 2, name: 'Tanqueray Gin', category: 'Alcohol', servingsPerBottle: 14, currentServings: 700, stock_barra: 4, stock_almacen: 10, umbral_alerta_barra: 2, umbral_alerta_almacen: 5, email_alerta_interno: '', email_proveedor: '', openedAt: new Date().toISOString(), price: 18.50 },
+            { id: 3, name: 'Campari', category: 'Alcohol', servingsPerBottle: 14, currentServings: 700, stock_barra: 2, stock_almacen: 3, umbral_alerta_barra: 2, umbral_alerta_almacen: 5, email_alerta_interno: '', email_proveedor: '', openedAt: new Date().toISOString(), price: 14.20 }
         ];
     });
 
@@ -475,8 +492,8 @@ const InventoryView = () => {
     }, [items]);
 
     const totalValue = items.reduce((acc, item) => {
-        const fullBottles = Math.ceil(item.currentServings / item.servingsPerBottle);
-        return acc + (fullBottles * item.price);
+        const contaje = (item.stock_barra || 0) + (item.stock_almacen || 0);
+        return acc + (contaje * item.price);
     }, 0);
 
     const openEditModal = (item) => {
@@ -491,25 +508,24 @@ const InventoryView = () => {
         const price = parseFloat(formData.get('price')) || 0;
         const servingsPerBottle = parseInt(formData.get('servingsPerBottle')) || 14;
         const category = formData.get('category');
-        const currentServings = parseInt(formData.get('currentServings')) ?? servingsPerBottle;
+        const currentServings = parseInt(formData.get('currentServings')) || 700;
+
+        const stock_barra = parseInt(formData.get('stock_barra')) || 0;
+        const stock_almacen = parseInt(formData.get('stock_almacen')) || 0;
+        const umbral_alerta_barra = parseInt(formData.get('umbral_alerta_barra')) || 2;
+        const umbral_alerta_almacen = parseInt(formData.get('umbral_alerta_almacen')) || 5;
+        const email_alerta_interno = formData.get('email_alerta_interno') || '';
+        const email_proveedor = formData.get('email_proveedor') || '';
 
         if (editingItem) {
             setItems(items.map(i => i.id === editingItem.id ? {
-                ...i,
-                name,
-                price,
-                servingsPerBottle,
-                category,
-                currentServings
+                ...i, name, price, servingsPerBottle, category, currentServings,
+                stock_barra, stock_almacen, umbral_alerta_barra, umbral_alerta_almacen, email_alerta_interno, email_proveedor
             } : i));
         } else {
             const newItem = {
-                id: Date.now(),
-                name,
-                price,
-                servingsPerBottle,
-                category,
-                currentServings,
+                id: Date.now(), name, price, servingsPerBottle, category, currentServings,
+                stock_barra, stock_almacen, umbral_alerta_barra, umbral_alerta_almacen, email_alerta_interno, email_proveedor,
                 openedAt: new Date().toISOString()
             };
             setItems([...items, newItem]);
@@ -518,12 +534,70 @@ const InventoryView = () => {
         setEditingItem(null);
     };
 
-    const editTragosDirectly = (item) => {
-        const newValue = prompt(`Editar tragos para ${item.name}:`, item.currentServings);
-        const parsedValue = parseInt(newValue);
-        if (newValue !== null && !isNaN(parsedValue) && newValue.trim() !== '') {
-            setItems(items.map(i => i.id === item.id ? { ...i, currentServings: parsedValue } : i));
+    const editarContaje = (item, type) => {
+        const typeLabel = type === 'barra' ? 'Barra' : 'Almacén';
+        const current = type === 'barra' ? item.stock_barra : item.stock_almacen;
+        const qtyRaw = prompt(`Nuevo contaje real en ${typeLabel} para ${item.name}:`, current);
+        const qty = parseInt(qtyRaw);
+        if (!isNaN(qty) && qty >= 0 && qtyRaw !== null && qtyRaw.trim() !== '') {
+            setItems(items.map(i => i.id === item.id ? { ...i, [type === 'barra' ? 'stock_barra' : 'stock_almacen']: qty } : i));
         }
+    };
+
+    const moverAlmacenABarra = (item) => {
+        const qtyRaw = prompt(`¿Cuántas botellas mover a barra? (Almacén: ${item.stock_almacen})`);
+        const qty = parseInt(qtyRaw);
+        if (!qty || qty <= 0) return;
+        if (qty > item.stock_almacen) {
+            alert('No hay suficiente stock en almacén.');
+            return;
+        }
+
+        setItems(items.map(i => i.id === item.id ? {
+            ...i,
+            stock_barra: (i.stock_barra || 0) + qty,
+            stock_almacen: (i.stock_almacen || 0) - qty
+        } : i));
+    };
+
+    const registrarCompra = (item) => {
+        const qtyRaw = prompt(`¿Cuántas botellas de ${item.name} has comprado para Almacén?`);
+        const qty = parseInt(qtyRaw);
+        if (!qty || qty <= 0) return;
+
+        const priceRaw = prompt(`¿Precio final de distribuidor por botella de ${item.name}?`, item.price);
+        const newPrice = parseFloat(priceRaw);
+        if (!newPrice || newPrice <= 0) return;
+
+        const costoTotal = qty * newPrice;
+
+        const variacionEu = newPrice - item.price;
+        const variacionPct = item.price > 0 ? (variacionEu / item.price) * 100 : 0;
+        const oldCostPerMl = item.price / (item.currentServings || 700);
+        const newCostPerMl = newPrice / (item.currentServings || 700);
+        const impactCocktail = (newCostPerMl - oldCostPerMl) * 50;
+
+        let alertMsg = `✅ RECEPCIÓN DE PEDIDO\nAñadido: ${qty} uds al almacén.\nPrecio Nuevo: ${newPrice}€ (vs ${item.price}€).\n\n`;
+        alertMsg += `📊 Variación de Coste: ${variacionEu > 0 ? '+' : ''}${variacionEu.toFixed(2)}€ (${variacionPct.toFixed(1)}%).\n`;
+        alertMsg += `🍹 Impacto Escandallo: ${impactCocktail > 0 ? '+' : ''}${Math.abs(impactCocktail).toFixed(3)}€ de coste extra por cada 50ml en un cóctel.\n`;
+
+        alert(alertMsg);
+
+        const nuevaCompra = { date: new Date().toISOString(), qty, price: newPrice, costoTotal };
+        const historial = [...(item.historial_compras || []), nuevaCompra];
+
+        setItems(items.map(i => i.id === item.id ? {
+            ...i,
+            stock_almacen: (i.stock_almacen || 0) + qty,
+            price: newPrice,
+            historial_compras: historial
+        } : i));
+    };
+
+    const generarEmailPedido = (item) => {
+        const sug = Math.max(0, (item.umbral_alerta_almacen || 5) * 2 - (item.stock_almacen || 0));
+        const body = `Hola,\n\nNecesitamos hacer un pedido urgente para reponer ${item.name}.\n\nCantidad sugerida: ${sug} botellas.\n\nPor favor, confirmen disponibilidad. Gracias.`;
+        window.location.href = `mailto:${item.email_proveedor || ''}?subject=Pedido de ${item.name}&body=${encodeURIComponent(body)}`;
     };
 
     const deleteItem = (id) => {
@@ -632,7 +706,7 @@ const InventoryView = () => {
                                 </div>
                             </div>
 
-                            <div className="grid grid-cols-2 gap-3 mb-6">
+                            <div className="grid grid-cols-2 gap-3 mb-4">
                                 <div className="input-group">
                                     <label className="text-[10px] uppercase font-black tracking-widest text-gray-400">Tragos/Botella</label>
                                     <input name="servingsPerBottle" type="number" defaultValue={editingItem?.servingsPerBottle || 14} required className="h-12 text-sm bg-black/40 border-gray-800 focus:border-orange-500" />
@@ -643,6 +717,33 @@ const InventoryView = () => {
                                 </div>
                             </div>
 
+                            <div className="grid grid-cols-2 gap-3 mb-4">
+                                <div className="input-group">
+                                    <label className="text-[10px] uppercase font-black tracking-widest text-gray-400">Stock Act. Barra</label>
+                                    <input name="stock_barra" type="number" defaultValue={editingItem?.stock_barra ?? 0} required className="h-12 text-sm bg-black/40 border-gray-800 focus:border-orange-500" />
+                                </div>
+                                <div className="input-group">
+                                    <label className="text-[10px] uppercase font-black tracking-widest text-gray-400">Stock Act. Almacén</label>
+                                    <input name="stock_almacen" type="number" defaultValue={editingItem?.stock_almacen ?? 0} required className="h-12 text-sm bg-black/40 border-gray-800 focus:border-orange-500" />
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-3 mb-4">
+                                <div className="input-group">
+                                    <label className="text-[10px] uppercase font-black tracking-widest text-orange-500/50">Umbral Alerta Barra</label>
+                                    <input name="umbral_alerta_barra" type="number" defaultValue={editingItem?.umbral_alerta_barra ?? 2} required className="h-12 text-sm bg-black/40 border-gray-800 focus:border-orange-500" />
+                                </div>
+                                <div className="input-group">
+                                    <label className="text-[10px] uppercase font-black tracking-widest text-red-500/50">Umbral Pedido Almacén</label>
+                                    <input name="umbral_alerta_almacen" type="number" defaultValue={editingItem?.umbral_alerta_almacen ?? 5} required className="h-12 text-sm bg-black/40 border-gray-800 focus:border-orange-500" />
+                                </div>
+                            </div>
+
+                            <div className="input-group mb-6">
+                                <label className="text-[10px] uppercase font-black tracking-widest text-gray-400 flex items-center gap-1"><Mail size={12} /> Email Pedidos Proveedor</label>
+                                <input name="email_proveedor" type="email" defaultValue={editingItem?.email_proveedor || ''} className="h-12 text-sm bg-black/40 border-gray-800 focus:border-orange-500" placeholder="pedidos@distribuidor.com" />
+                            </div>
+
                             <button type="submit" className="w-full h-12 bg-orange-500 text-black rounded-xl uppercase font-black text-[11px] shadow-lg shadow-orange-500/20 active:scale-95 transition-all flex items-center justify-center gap-2">
                                 <Save size={16} /> Guardar Producto
                             </button>
@@ -650,69 +751,107 @@ const InventoryView = () => {
                     </div>
                 )}
 
-                {filteredItems.map(item => (
-                    <div key={item.id} className="card border-l-4 p-6" style={{ borderColor: item.category === 'Alcohol' ? 'var(--accent-orange)' : '#4ade80' }}>
-                        <div className="flex justify-between items-start mb-6">
-                            <div onClick={() => openEditModal(item)} className="cursor-pointer">
-                                <span className={`text-[8px] font-black px-2 py-1 rounded-full uppercase tracking-widest ${item.category === 'Alcohol' ? 'bg-orange-500/10 text-orange-500' : 'bg-green-500/10 text-green-400'}`}>
-                                    {item.category}
-                                </span>
-                                <h3 className="text-xl font-black text-white mt-1">{item.name}</h3>
-                            </div>
-                            <div className="flex gap-2">
-                                <button onClick={() => deleteItem(item.id)} className="w-11 h-11 bg-red-500/5 hover:bg-red-500/10 rounded-xl flex items-center justify-center text-red-500 transition-all"><Trash2 size={18} /></button>
-                            </div>
-                        </div>
+                {filteredItems.map(item => {
+                    const isBarraBajo = item.stock_barra <= (item.umbral_alerta_barra ?? 2);
+                    const isAlmacenBajo = item.stock_almacen <= (item.umbral_alerta_almacen ?? 5);
 
-                        <div className="flex items-center gap-4 bg-black/40 p-4 rounded-2xl border border-white/5">
-                            <button onClick={() => updateTragos(item.id, -1)} className="w-14 h-14 bg-gray-900 rounded-xl flex items-center justify-center active:scale-90 transition-all">
-                                <Minus size={24} className="text-gray-600" />
-                            </button>
-
-                            <button
-                                onClick={() => editTragosDirectly(item)}
-                                className="btn-action flex-1 bg-white/5 border border-white/5 rounded-2xl flex flex-col items-center justify-center hover:bg-orange-500/5 group"
-                            >
-                                <span className="text-2xl font-black text-white group-hover:text-orange-500 transition-colors">{item.currentServings}</span>
-                                <span className="text-[7px] text-orange-500 font-black uppercase tracking-widest opacity-40 group-hover:opacity-100">Editar</span>
-                            </button>
-
-                            <button onClick={() => updateTragos(item.id, 1)} className="w-14 h-14 bg-orange-500 text-black rounded-xl flex items-center justify-center shadow-lg shadow-orange-500/20 active:scale-90 transition-all">
-                                <Plus size={24} />
-                            </button>
-                        </div>
-
-                        <div className="mt-4 flex justify-between items-center">
-                            <button
-                                onClick={() => setShowInfoId(showInfoId === item.id ? null : item.id)}
-                                className="btn-action bg-white/5 text-gray-500 hover:text-white rounded-xl"
-                            >
-                                {showInfoId === item.id ? 'Cerrar' : 'Opciones'}
-                            </button>
-                            {item.currentServings < 5 && (
-                                <span className="flex items-center gap-1.5 text-[8px] font-black text-red-500 uppercase tracking-widest bg-red-500/10 px-3 py-1.5 rounded-full animate-pulse">
-                                    <AlertCircle size={10} /> Stock Bajo
-                                </span>
-                            )}
-                        </div>
-
-                        {showInfoId === item.id && (
-                            <div className="mt-6 pt-6 border-t border-white/5 grid grid-cols-2 gap-3 fade-in">
-                                <div className="bg-white/5 p-4 rounded-2xl">
-                                    <p className="text-[8px] text-muted font-black uppercase tracking-widest mb-1">Apertura</p>
-                                    <p className="text-xs font-black flex items-center gap-2 text-white"><Calendar size={12} className="text-orange-500" /> {getTimeInInventory(item.openedAt)}</p>
+                    return (
+                        <div key={item.id} className="card border-l-4 p-6" style={{ borderColor: item.category === 'Alcohol' ? 'var(--accent-orange)' : '#4ade80' }}>
+                            <div className="flex justify-between items-start mb-4">
+                                <div onClick={() => openEditModal(item)} className="cursor-pointer">
+                                    <span className={`text-[8px] font-black px-2 py-1 rounded-full uppercase tracking-widest ${item.category === 'Alcohol' ? 'bg-orange-500/10 text-orange-500' : 'bg-green-500/10 text-green-400'}`}>
+                                        {item.category}
+                                    </span>
+                                    <h3 className="text-xl font-black text-white mt-1">{item.name}</h3>
                                 </div>
-                                <div className="bg-white/5 p-4 rounded-2xl">
-                                    <p className="text-[8px] text-muted font-black uppercase tracking-widest mb-1">Costo Botella</p>
-                                    <p className="text-xs font-black flex items-center gap-2 text-white"><Euro size={12} className="text-orange-500" /> {item.price.toFixed(2)}€</p>
+                                <div className="flex gap-2">
+                                    <button onClick={() => deleteItem(item.id)} className="w-11 h-11 bg-red-500/5 hover:bg-red-500/10 rounded-xl flex items-center justify-center text-red-500 transition-all"><Trash2 size={18} /></button>
                                 </div>
-                                <button className="col-span-2 mt-2 h-10 flex items-center justify-center gap-2 text-[10px] uppercase font-black text-orange-500 bg-orange-500/10 rounded-xl" onClick={() => openEditModal(item)}>
-                                    <Edit3 size={14} /> Editar Información Global
+                            </div>
+
+                            <div className="grid grid-cols-3 gap-2 mb-4">
+                                <div className="bg-white/5 rounded-2xl p-3 flex flex-col justify-center items-center border border-white/5">
+                                    <span className="text-[8px] uppercase font-black text-gray-500 tracking-widest mb-1">Total Ud.</span>
+                                    <span className="text-xl font-black text-white">{(item.stock_barra || 0) + (item.stock_almacen || 0)}</span>
+                                </div>
+                                <div onClick={() => editarContaje(item, 'barra')} className="bg-orange-500/10 cursor-pointer hover:bg-orange-500/20 rounded-2xl p-3 flex flex-col justify-center items-center border border-orange-500/20 transition-all">
+                                    <span className="text-[8px] uppercase font-black text-orange-500 tracking-widest mb-1 flex items-center gap-1"><Wine size={10} /> Barra</span>
+                                    <span className="text-xl font-black text-white">{item.stock_barra}</span>
+                                </div>
+                                <div onClick={() => editarContaje(item, 'almacen')} className="bg-blue-500/10 cursor-pointer hover:bg-blue-500/20 rounded-2xl p-3 flex flex-col justify-center items-center border border-blue-500/20 transition-all">
+                                    <span className="text-[8px] uppercase font-black text-blue-500 tracking-widest mb-1 flex items-center gap-1"><Package size={10} /> Almacenes</span>
+                                    <span className="text-xl font-black text-white">{item.stock_almacen}</span>
+                                </div>
+                            </div>
+
+                            <div className="flex gap-2 mb-4">
+                                <button onClick={() => moverAlmacenABarra(item)} className="btn-action flex-1 h-12 bg-white/5 border border-white/5 rounded-xl flex flex-col items-center justify-center hover:bg-orange-500/5 group text-gray-400 hover:text-orange-500 transition-all">
+                                    <div className="flex gap-2 items-center"><Package size={14} /> <ArrowRight size={14} /> <Wine size={14} /></div>
+                                    <span className="text-[7px] font-black uppercase tracking-widest mt-1 opacity-50 group-hover:opacity-100">Pasar a Barra</span>
+                                </button>
+                                <button onClick={() => registrarCompra(item)} className="btn-action flex-1 h-12 bg-green-500/10 border border-green-500/20 text-green-500 rounded-xl flex flex-col items-center justify-center hover:bg-green-500/20 group transition-all">
+                                    <ShoppingCart size={16} />
+                                    <span className="text-[7px] font-black uppercase tracking-widest mt-1 opacity-80 group-hover:opacity-100">+ Comprar</span>
                                 </button>
                             </div>
-                        )}
-                    </div>
-                ))}
+
+                            {isBarraBajo && (
+                                <div className="bg-orange-500/10 text-orange-500 p-3 rounded-2xl text-[9px] font-black uppercase flex items-center justify-between mb-2 border border-orange-500/20 animate-pulse">
+                                    <span className="flex items-center gap-2"><AlertTriangle size={14} /> REPONER DESDE ALMACÉN</span>
+                                    <span>(Stock: {item.stock_barra})</span>
+                                </div>
+                            )}
+
+                            {isAlmacenBajo && (
+                                <div className="bg-red-500/10 text-red-500 p-3 rounded-2xl text-[9px] font-black uppercase flex items-center justify-between mb-4 border border-red-500/20">
+                                    <span className="flex items-center gap-2"><AlertCircle size={14} /> PEDIDO PROVEEDOR</span>
+                                    <button onClick={() => generarEmailPedido(item)} className="bg-red-500 text-black px-3 py-1.5 rounded-xl flex items-center gap-2 active:scale-95 transition-all"><Mail size={12} /> ENVIAR</button>
+                                </div>
+                            )}
+
+                            <div className="flex justify-between items-center">
+                                <button
+                                    onClick={() => setShowInfoId(showInfoId === item.id ? null : item.id)}
+                                    className="btn-action w-full bg-white/5 text-gray-500 hover:text-white rounded-xl h-10 text-[9px] uppercase font-black tracking-widest"
+                                >
+                                    {showInfoId === item.id ? 'Cerrar Detalles' : 'Ver Ficha Completa'}
+                                </button>
+                            </div>
+
+                            {showInfoId === item.id && (
+                                <div className="mt-4 pt-4 border-t border-white/5 grid grid-cols-2 gap-3 fade-in">
+                                    <div className="bg-white/5 p-4 rounded-2xl">
+                                        <p className="text-[8px] text-muted font-black uppercase tracking-widest mb-1">Apertura</p>
+                                        <p className="text-xs font-black flex items-center gap-2 text-white"><Calendar size={12} className="text-orange-500" /> {getTimeInInventory(item.openedAt)}</p>
+                                    </div>
+                                    <div className="bg-white/5 p-4 rounded-2xl">
+                                        <p className="text-[8px] text-muted font-black uppercase tracking-widest mb-1">Costo Botella</p>
+                                        <p className="text-xs font-black flex items-center gap-2 text-white"><Euro size={12} className="text-orange-500" /> {item.price.toFixed(2)}€</p>
+                                    </div>
+
+                                    {(item.historial_compras && item.historial_compras.length > 0) && (
+                                        <div className="col-span-2 bg-white/5 p-4 rounded-2xl mt-2">
+                                            <p className="text-[8px] text-muted font-black uppercase tracking-widest mb-3 flex items-center gap-2"><History size={12} /> Historial Económico</p>
+                                            <div className="max-h-32 overflow-y-auto space-y-2 pr-2 scrollbar-hide">
+                                                {item.historial_compras.slice().reverse().map((compra, idx) => (
+                                                    <div key={idx} className="flex justify-between items-center text-[10px] border-b border-white/5 pb-2">
+                                                        <span className="text-gray-400">{new Date(compra.date).toLocaleDateString()}</span>
+                                                        <span className="text-white font-black">+{compra.qty} uds</span>
+                                                        <span className="text-orange-500 font-bold">{compra.price.toFixed(2)}€/u</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    <button className="col-span-2 mt-2 h-10 flex items-center justify-center gap-2 text-[10px] uppercase font-black text-orange-500 bg-orange-500/10 rounded-xl" onClick={() => openEditModal(item)}>
+                                        <Edit3 size={14} /> Editar Información Global
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+                    );
+                })}
             </div>
 
         </div>
